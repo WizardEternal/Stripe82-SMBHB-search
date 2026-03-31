@@ -1,86 +1,57 @@
 # Stripe 82 SMBHB Search
 
-An end-to-end pipeline for searching supermassive black hole binary (SMBHB) candidates in the SDSS Stripe 82 quasar dataset using optical periodicity analysis and machine learning. Built as a hands-on exploration of the methodology underpinning the [MMMonsters ERC project](https://www.ia.forth.gr/).
+A pipeline for searching for supermassive black hole binary (SMBHB) candidates in the SDSS Stripe 82 quasar dataset using optical periodicity analysis and machine learning. Built as part of exploring the methodology behind multi-messenger searches for SMBHBs, relevant to projects like [MMMonsters](https://www.ia.forth.gr/).
 
 ---
 
-## Scientific Background
+## What is this actually doing?
 
-Active galactic nuclei (quasars) are powered by accretion onto supermassive black holes and show stochastic optical variability. This variability is well-modelled as a **Damped Random Walk (DRW)** — a red-noise process characterised by a decorrelation timescale τ and variability amplitude SF∞. A SMBHB should imprint *periodic* variability on top of this background due to its orbital motion, potentially via Doppler boosting, accretion rate modulation, or circumbinary disk dynamics.
+Quasars vary in brightness over time in a random-looking way that is well described by a stochastic process called a Damped Random Walk (DRW). If a quasar hosts two supermassive black holes orbiting each other (an SMBHB), you would expect to see some periodic signal on top of that random variability, caused by things like the orbital motion, Doppler boosting, or the dynamics of the gas around the binary.
 
-The core challenge: **red noise can mimic periodicity** over a finite observing baseline. A naive Lomb-Scargle search with a white-noise false alarm probability will produce many spurious detections. The correct approach is to assess significance against the DRW process itself — using the pre-fitted DRW parameters for each quasar to simulate realistic null light curves and build an empirical noise floor.
+The problem is that random noise, if you stare at it long enough, will occasionally look periodic just by chance. This is especially bad for DRW-type red noise which has more power at long timescales and can easily fool a naive period search. So the main challenge here is not finding periodic signals, it is figuring out which ones are real.
 
----
-
-## Dataset
-
-**SDSS Stripe 82** — MacLeod et al. (2012): 9,258 spectroscopically confirmed quasars with ~10 year optical light curves in ugriz bands. Observations are organised in yearly ~3-month seasons with roughly nightly cadence, creating large (~9 month) seasonal gaps. This irregular, gappy cadence is a major challenge for period finding.
-
-Downloaded automatically by `01_download_data.py` from the [MacLeod et al. catalog](http://faculty.washington.edu/ivezic/macleod/qso_dr7/Southern.html).
+The dataset is the MacLeod et al. Stripe 82 catalog: 9,258 spectroscopically confirmed quasars with optical light curves spanning roughly 10 years, from the SDSS. Observations happen in yearly seasons of about 3 months with nightly cadence, so there are large gaps of about 9 months between seasons every year. This makes period finding harder than it sounds.
 
 ---
 
-## Pipeline
+## Pipeline overview
 
 | Script | What it does |
 |--------|-------------|
-| `01_download_data.py` | Downloads and extracts all three data archives (~30 MB) |
-| `02_eda.py` | Exploratory analysis — light curves, cadence, population distributions |
-| `03_variability.py` | Structure functions for all objects; comparison against DRW model |
-| `04_periodicity.py` | Lomb-Scargle search with DRW Monte Carlo null; alias masking |
+| `01_download_data.py` | Downloads and extracts the raw data (~30 MB) |
+| `02_eda.py` | Basic exploration of the light curves and the quasar population |
+| `03_variability.py` | Computes structure functions and compares them to the DRW model |
+| `04_periodicity.py` | Runs the Lomb-Scargle period search with proper DRW-based significance |
 | `05_ml.py` | Three ML approaches for classifying periodic vs stochastic objects |
-| `06_crossmatch.py` | Cross-match candidates against Graham+2015; follow-up on novel detections |
+| `06_crossmatch.py` | Cross-matches candidates against Graham+2015; follows up on novel detections |
 
 ---
 
-## Methodology
+## The significance problem
 
-### DRW as the null hypothesis
-Most published searches assess LS peak significance against white noise. Quasar variability is red noise — it has more power at low frequencies, making the white-noise FAP severely underestimated. Here, for each candidate, we simulate 200 DRW light curves sampled at the same cadence as the observed data (using the MacLeod et al. pre-fitted τ and σ), run LS on each, and use the 99th/99.9th percentile of the resulting peak power distribution as the significance threshold.
+Most published searches assess how significant a Lomb-Scargle peak is by comparing it against white noise. Quasar variability is not white noise, it is red noise, and using the wrong null model means your false alarm probabilities are way off. Here, for each candidate, we simulate 200 DRW light curves for that specific object (sampled at exactly the same times as the real data, using its fitted DRW parameters) and use the distribution of peak powers from those simulations as the significance threshold. A detection has to beat the 99th or 99.9th percentile of that distribution to count.
 
-### Seasonal alias masking
-Stripe 82's ~9-month seasonal gaps create strong aliasing in the LS periodogram at 365 d, 182.5 d, and 121.7 d. Any peak within ±25/15/10 days of these is explicitly masked before reporting candidates.
-
-### 3-cycle requirement
-Only periods where at least 3 full cycles fit within the object's observing baseline are considered. A claimed "period" of 4000 days in a 3000-day dataset is noise. This is the Vaughan et al. (2016) criterion now standard in the field.
-
-### Three independent ML approaches
-The ML section deliberately uses three methods to avoid the circularity of training a classifier whose labels and dominant feature are both derived from the same LS periodogram:
-
-- **RF (full features)**: Includes LS peak power — effectively reproduces the LS selection, demonstrates the circularity problem.
-- **RF (no LS features)**: Trained only on light curve statistics and DRW parameters. ROC-AUC = 0.81, showing that photometric variability properties *alone* carry real information about periodicity — a non-trivial, non-circular result.
-- **Isolation Forest (unsupervised)**: No labels required. Finds anomalous objects purely from feature-space density. Identifies objects missed by LS that are photometrically unusual.
+Two other things that matter a lot: the yearly seasonal gaps create fake peaks in the periodogram at 365 days and its harmonics, so those period ranges are masked out. And any claimed period has to fit at least 3 full cycles within the data baseline, otherwise it is not really constrained.
 
 ---
 
 ## Results
 
-### Population variability (plots 01–07)
-- Median of 60 r-band observations per object over a ~3300-day baseline
-- Observed structure functions broadly consistent with DRW but systematically ~20% below the DRW prediction at intermediate lags (~100–300 days), caused by the near-absence of observation pairs during the seasonal gap
-- 75% of objects fall below their DRW prediction at 300 days — the DRW model slightly overestimates variability at these timescales
+**Variability:** The population structure functions broadly follow the DRW model but are systematically about 20% lower than predicted at lags around 100-300 days. This is because there are almost no observation pairs at those timescales due to the seasonal gaps, so the structure function estimates there are unreliable.
 
-### Periodicity search (plots 08–10)
-- 8,896 objects passed the 3-cycle cut over the 200–1100 day period grid
-- **55 candidates at >99% DRW significance**
-- **27 candidates at >99.9% DRW significance**
-- Candidates cluster at periods of 300–500 days with no excess at the alias periods, confirming the masking is working correctly
+**Period search:** Searching 8,896 objects over a period grid of 200-1100 days, we find 55 candidates significant at the 99% DRW level and 27 at 99.9%. Candidates mostly cluster around periods of 300-500 days.
 
-### ML results (plots 11–17)
-- RF (full): ROC-AUC = 0.996, AP = 0.488 — inflated by circularity (peak power dominates feature importance at 62%)
-- RF (no LS features): ROC-AUC = 0.808, AP = 0.040 — honest non-circular result; kurtosis, skewness, and excess variance are the leading discriminants
-- Isolation Forest: ROC-AUC = 0.661 vs LS labels — partially independent ranking, flags a different population
-- **2 novel candidates** appear in both the top 1% of Isolation Forest scores and top 5% of RF-noLS scores, while falling below the formal LS threshold. Both show unusually heavy-tailed magnitude distributions (high kurtosis) and are at z~1.7. Their LS periodograms have peaks just below the DRW 99% threshold, and their phase-folded light curves show broadly coherent structure at ~340 d and ~409 d respectively.
+**ML:** Three separate approaches were used on purpose to deal with a circularity problem. If you train a classifier whose labels come from the LS peak power and then include LS peak power as a feature, the classifier just learns to replicate what you already computed (ROC-AUC 0.996, but meaningless). The more interesting result is the RF trained without any LS-derived features at all, which still reaches ROC-AUC 0.81 using only light curve shape and variability statistics. This means there is genuine information about periodicity in the photometric properties independent of the period search itself. Kurtosis, skewness, and excess variance are the leading features. The unsupervised Isolation Forest adds a third independent ranking.
 
-### Crossmatch (plots 18–20)
-- 0 matches with Graham+2015 (CRTS): only 2 of 111 Graham objects fall in the Stripe 82 footprint at all, and neither matches our candidates. This is expected given the different survey cadence and baseline, and consistent with the known low persistence rate of candidates from that era — many of which have since been shown to be red-noise artefacts over extended baselines.
-- Charisi+2016 (PTF) is not available on VizieR; PTF and Stripe 82 have limited footprint overlap.
+Two objects come out as high-scoring in both the LS-free RF and the Isolation Forest while falling just below the formal LS threshold. Both are at z~1.7, have unusually heavy-tailed magnitude distributions, and show rough phase coherence at periods of ~340 and ~409 days respectively. These are worth following up.
+
+**Crossmatch:** Zero matches with Graham+2015, but this is not surprising. Only 2 of their 111 objects even fall in the Stripe 82 footprint to begin with. More importantly, many candidates from that era have since been shown not to persist when observed over longer baselines, which is a known issue with LS-based searches on short datasets.
 
 ---
 
-## A Note on LS Limitations
+## A known limitation worth mentioning
 
-Lomb-Scargle assumes sinusoidal signals. Lin, Charisi & Haiman (2026) show that hydrodynamical simulations of circumbinary accretion disks predict **sawtooth-shaped** light curve variations. LS recovers these at only ~1–9% efficiency compared to ~24% for sinusoids — meaning the majority of real SMBHBs are likely missed by any LS-based search. The Isolation Forest component here is a first step toward a shape-agnostic approach, motivated directly by this finding.
+Lomb-Scargle looks for sinusoidal signals. Recent hydrodynamical simulations of circumbinary accretion disks (Lin, Charisi & Haiman 2026) suggest that real SMBHB light curves are more sawtooth-shaped, and LS only recovers those at about 1-9% efficiency. This means most real SMBHBs would be missed by this pipeline regardless of significance thresholds, which motivates the Isolation Forest approach as a first step toward something more shape-agnostic.
 
 ---
 
@@ -90,9 +61,9 @@ Lomb-Scargle assumes sinusoidal signals. Lin, Charisi & Haiman (2026) show that 
 pip install numpy pandas matplotlib astropy scikit-learn scipy astroquery
 ```
 
-Python 3.9+ recommended.
+Python 3.9+.
 
-## Usage
+## Running it
 
 ```bash
 python 01_download_data.py   # ~1 min
@@ -103,14 +74,14 @@ python 05_ml.py              # ~15 min
 python 06_crossmatch.py      # ~2 min
 ```
 
-Plots → `plots/`   |   Intermediate CSVs → `data/`
+Plots go to `plots/`. Intermediate results (CSVs) go to `data/`.
 
 ---
 
 ## References
 
-- MacLeod et al. 2012, ApJ 753, 106 — Stripe 82 DRW light curves and parameters
-- Charisi et al. 2016, MNRAS 463, 2145 — PTF periodic quasar candidates
-- Graham et al. 2015, MNRAS 453, 1562 — CRTS periodic quasar candidates
-- Vaughan et al. 2016, MNRAS 461, 3145 — red noise and spurious periodicity
-- Lin, Charisi & Haiman 2026, arXiv:2505.14778 — LS efficiency for non-sinusoidal SMBHB signals
+- MacLeod et al. 2012, ApJ 753, 106
+- Charisi et al. 2016, MNRAS 463, 2145
+- Graham et al. 2015, MNRAS 453, 1562
+- Vaughan et al. 2016, MNRAS 461, 3145
+- Lin, Charisi & Haiman 2026, arXiv:2505.14778
