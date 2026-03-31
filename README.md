@@ -1,49 +1,88 @@
-# Stripe 82 Quasar Periodicity Pipeline
+# Stripe 82 SMBHB Search
 
-A complete end-to-end pipeline for searching supermassive black hole binary (SMBHB) candidates in the SDSS Stripe 82 quasar light curve dataset via optical periodicity analysis and machine learning.
+An end-to-end pipeline for searching supermassive black hole binary (SMBHB) candidates in the SDSS Stripe 82 quasar dataset using optical periodicity analysis and machine learning. Built as a hands-on exploration of the methodology underpinning the [MMMonsters ERC project](https://www.ia.forth.gr/).
+
+---
 
 ## Scientific Background
 
-Quasars show stochastic optical variability well-described by a Damped Random Walk (DRW) process. A SMBHB should imprint *periodic* variability on top of this stochastic background due to its orbital motion. The challenge is distinguishing genuine periodicity from red-noise fluctuations that can mimic it over a finite baseline.
+Active galactic nuclei (quasars) are powered by accretion onto supermassive black holes and show stochastic optical variability. This variability is well-modelled as a **Damped Random Walk (DRW)** — a red-noise process characterised by a decorrelation timescale τ and variability amplitude SF∞. A SMBHB should imprint *periodic* variability on top of this background due to its orbital motion, potentially via Doppler boosting, accretion rate modulation, or circumbinary disk dynamics.
 
-This pipeline applies a statistically rigorous search to **9,258 spectroscopically confirmed quasars** from the MacLeod et al. Stripe 82 dataset, using DRW simulations as the null hypothesis rather than white noise — a critical methodological distinction.
+The core challenge: **red noise can mimic periodicity** over a finite observing baseline. A naive Lomb-Scargle search with a white-noise false alarm probability will produce many spurious detections. The correct approach is to assess significance against the DRW process itself — using the pre-fitted DRW parameters for each quasar to simulate realistic null light curves and build an empirical noise floor.
+
+---
+
+## Dataset
+
+**SDSS Stripe 82** — MacLeod et al. (2012): 9,258 spectroscopically confirmed quasars with ~10 year optical light curves in ugriz bands. Observations are organised in yearly ~3-month seasons with roughly nightly cadence, creating large (~9 month) seasonal gaps. This irregular, gappy cadence is a major challenge for period finding.
+
+Downloaded automatically by `01_download_data.py` from the [MacLeod et al. catalog](http://faculty.washington.edu/ivezic/macleod/qso_dr7/Southern.html).
+
+---
 
 ## Pipeline
 
-| Script | Description |
+| Script | What it does |
 |--------|-------------|
-| `01_download_data.py` | Download and extract all raw data (~30 MB) |
-| `02_eda.py` | Exploratory data analysis — light curves, cadence, population statistics |
-| `03_variability.py` | Structure function computation and DRW model comparison |
-| `04_periodicity.py` | Lomb-Scargle periodicity search with DRW Monte Carlo significance |
-| `05_ml.py` | Feature-based ML: RF (full), RF (no LS features), Isolation Forest |
-| `06_crossmatch.py` | Cross-match against published SMBHB catalogs (Graham+2015) |
+| `01_download_data.py` | Downloads and extracts all three data archives (~30 MB) |
+| `02_eda.py` | Exploratory analysis — light curves, cadence, population distributions |
+| `03_variability.py` | Structure functions for all objects; comparison against DRW model |
+| `04_periodicity.py` | Lomb-Scargle search with DRW Monte Carlo null; alias masking |
+| `05_ml.py` | Three ML approaches for classifying periodic vs stochastic objects |
+| `06_crossmatch.py` | Cross-match candidates against Graham+2015; follow-up on novel detections |
 
-## Key Methodological Points
+---
 
-- **DRW null hypothesis**: Significance assessed against 200 DRW simulations per object (not white noise FAP), using pre-fitted DRW parameters from MacLeod et al.
-- **Seasonal alias masking**: Peaks at 365 ± 25 d, 182.5 ± 15 d, and 121.7 ± 10 d are explicitly excluded as Stripe 82 cadence artefacts.
-- **3-cycle requirement**: Only periods where ≥ 3 full cycles fit within the baseline are reported (Vaughan et al. 2016 criterion).
-- **Three independent ML approaches**: A standard RF classifier, a non-circular RF trained without any LS-derived features, and an unsupervised Isolation Forest — allowing cross-validation of candidates.
+## Methodology
 
-## Results Summary
+### DRW as the null hypothesis
+Most published searches assess LS peak significance against white noise. Quasar variability is red noise — it has more power at low frequencies, making the white-noise FAP severely underestimated. Here, for each candidate, we simulate 200 DRW light curves sampled at the same cadence as the observed data (using the MacLeod et al. pre-fitted τ and σ), run LS on each, and use the 99th/99.9th percentile of the resulting peak power distribution as the significance threshold.
 
-- **9,258 quasars** searched over a period grid of 200–1100 days
-- **55 periodic candidates** at >99% DRW significance; **27 at >99.9%**
-- **2 novel candidates** flagged by Isolation Forest + LS-feature-free RF but below the formal LS threshold — potential non-sinusoidal signals missed by standard period-finding
-- **0 matches** with Graham+2015 (CRTS): only 2 Graham objects fall in the Stripe 82 footprint; consistent with the known low persistence rate of early SMBHB candidates
+### Seasonal alias masking
+Stripe 82's ~9-month seasonal gaps create strong aliasing in the LS periodogram at 365 d, 182.5 d, and 121.7 d. Any peak within ±25/15/10 days of these is explicitly masked before reporting candidates.
 
-## LS Limitation Note
+### 3-cycle requirement
+Only periods where at least 3 full cycles fit within the object's observing baseline are considered. A claimed "period" of 4000 days in a 3000-day dataset is noise. This is the Vaughan et al. (2016) criterion now standard in the field.
 
-This pipeline uses Lomb-Scargle, which assumes sinusoidal signals. Lin, Charisi & Haiman (2026) show that hydrodynamical simulations predict sawtooth-shaped light curves from circumbinary disk interactions, which LS recovers at only ~1–9% efficiency. The unsupervised Isolation Forest component is intended as a step toward more shape-agnostic detection.
+### Three independent ML approaches
+The ML section deliberately uses three methods to avoid the circularity of training a classifier whose labels and dominant feature are both derived from the same LS periodogram:
 
-## Data
+- **RF (full features)**: Includes LS peak power — effectively reproduces the LS selection, demonstrates the circularity problem.
+- **RF (no LS features)**: Trained only on light curve statistics and DRW parameters. ROC-AUC = 0.81, showing that photometric variability properties *alone* carry real information about periodicity — a non-trivial, non-circular result.
+- **Isolation Forest (unsupervised)**: No labels required. Finds anomalous objects purely from feature-space density. Identifies objects missed by LS that are photometrically unusual.
 
-Data is downloaded automatically by `01_download_data.py` from the [MacLeod et al. Stripe 82 catalog](http://faculty.washington.edu/ivezic/macleod/qso_dr7/Southern.html):
+---
 
-- `QSO_S82.tar.gz` — 9,258 individual light curve files
-- `DB_QSO_S82.dat.gz` — quasar metadata (redshift, BH mass, luminosity)
-- `s82drw.tar.gz` — pre-fitted DRW parameters in all 5 SDSS bands
+## Results
+
+### Population variability (plots 01–07)
+- Median of 60 r-band observations per object over a ~3300-day baseline
+- Observed structure functions broadly consistent with DRW but systematically ~20% below the DRW prediction at intermediate lags (~100–300 days), caused by the near-absence of observation pairs during the seasonal gap
+- 75% of objects fall below their DRW prediction at 300 days — the DRW model slightly overestimates variability at these timescales
+
+### Periodicity search (plots 08–10)
+- 8,896 objects passed the 3-cycle cut over the 200–1100 day period grid
+- **55 candidates at >99% DRW significance**
+- **27 candidates at >99.9% DRW significance**
+- Candidates cluster at periods of 300–500 days with no excess at the alias periods, confirming the masking is working correctly
+
+### ML results (plots 11–17)
+- RF (full): ROC-AUC = 0.996, AP = 0.488 — inflated by circularity (peak power dominates feature importance at 62%)
+- RF (no LS features): ROC-AUC = 0.808, AP = 0.040 — honest non-circular result; kurtosis, skewness, and excess variance are the leading discriminants
+- Isolation Forest: ROC-AUC = 0.661 vs LS labels — partially independent ranking, flags a different population
+- **2 novel candidates** appear in both the top 1% of Isolation Forest scores and top 5% of RF-noLS scores, while falling below the formal LS threshold. Both show unusually heavy-tailed magnitude distributions (high kurtosis) and are at z~1.7. Their LS periodograms have peaks just below the DRW 99% threshold, and their phase-folded light curves show broadly coherent structure at ~340 d and ~409 d respectively.
+
+### Crossmatch (plots 18–20)
+- 0 matches with Graham+2015 (CRTS): only 2 of 111 Graham objects fall in the Stripe 82 footprint at all, and neither matches our candidates. This is expected given the different survey cadence and baseline, and consistent with the known low persistence rate of candidates from that era — many of which have since been shown to be red-noise artefacts over extended baselines.
+- Charisi+2016 (PTF) is not available on VizieR; PTF and Stripe 82 have limited footprint overlap.
+
+---
+
+## A Note on LS Limitations
+
+Lomb-Scargle assumes sinusoidal signals. Lin, Charisi & Haiman (2026) show that hydrodynamical simulations of circumbinary accretion disks predict **sawtooth-shaped** light curve variations. LS recovers these at only ~1–9% efficiency compared to ~24% for sinusoids — meaning the majority of real SMBHBs are likely missed by any LS-based search. The Isolation Forest component here is a first step toward a shape-agnostic approach, motivated directly by this finding.
+
+---
 
 ## Requirements
 
@@ -56,20 +95,22 @@ Python 3.9+ recommended.
 ## Usage
 
 ```bash
-python 01_download_data.py   # ~1 min, downloads ~30 MB
+python 01_download_data.py   # ~1 min
 python 02_eda.py             # ~3 min
 python 03_variability.py     # ~10 min
-python 04_periodicity.py     # ~20 min (LS on 9k objects + 200 MC simulations)
+python 04_periodicity.py     # ~20 min
 python 05_ml.py              # ~15 min
 python 06_crossmatch.py      # ~2 min
 ```
 
-All plots are saved to `plots/`. Intermediate results (CSVs) are saved to `data/`.
+Plots → `plots/`   |   Intermediate CSVs → `data/`
+
+---
 
 ## References
 
-- MacLeod et al. 2012 — Stripe 82 DRW light curves
+- MacLeod et al. 2012, ApJ 753, 106 — Stripe 82 DRW light curves and parameters
 - Charisi et al. 2016, MNRAS 463, 2145 — PTF periodic quasar candidates
 - Graham et al. 2015, MNRAS 453, 1562 — CRTS periodic quasar candidates
-- Vaughan et al. 2016 — red noise and spurious periodicity
-- Lin, Charisi & Haiman 2026 — LS efficiency for non-sinusoidal SMBHB signals
+- Vaughan et al. 2016, MNRAS 461, 3145 — red noise and spurious periodicity
+- Lin, Charisi & Haiman 2026, arXiv:2505.14778 — LS efficiency for non-sinusoidal SMBHB signals
