@@ -14,6 +14,13 @@ __pycache__/
 dist/
 build/
 
+# IDE and editor config
+.vscode/
+.idea/
+.cursor/
+.claude/
+.continue/
+
 # Jupyter (if any)
 .ipynb_checkpoints/
 
