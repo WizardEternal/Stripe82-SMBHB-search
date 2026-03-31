@@ -1,0 +1,22 @@
+# Raw data — too large for git, re-downloadable via 01_download_data.py
+data/
+
+# Personal project notes
+stripe82_project_context.md
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# Jupyter (if any)
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
