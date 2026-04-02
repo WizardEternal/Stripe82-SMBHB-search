@@ -53,9 +53,8 @@ db = pd.read_csv(DATA_DIR / "DB_QSO_S82.dat",
 drw = pd.read_csv(DATA_DIR / "drw" / "s82drw_r.dat",
                   comment="#", sep=r"\s+", names=DRW_COLS)
 
-# Match DRW params to DB via ra/dec (both files share the same catalog coords).
-# Merge on rounded ra/dec to avoid float precision issues — 5 decimal places
-# is ~1 arcsec precision, sufficient for unique matching.
+# Match DRW params to DB via rounded RA/Dec (unique at 5 decimal places ≈ 0.04 arcsec;
+# SDR5ID has 300 duplicates so cannot be used as a join key).
 db["_ra5"]  = db["ra"].round(5)
 db["_dec5"] = db["dec"].round(5)
 drw["_ra5"]  = drw["ra"].round(5)
@@ -84,19 +83,21 @@ def drw_sf(dt, log_tau, log_sigma):
 # ── Structure function for one light curve ───────────────────────────────────
 LAG_BINS = np.logspace(1, 3.6, 30)   # 10 to ~4000 days, log-spaced
 
-def compute_sf(mjd, mag, bins=LAG_BINS):
+def compute_sf(mjd, mag, err=None, bins=LAG_BINS):
     """
-    Compute binned structure function SF(Δt) = sqrt(<|Δm|^2>) for all pairs.
-    Returns (bin_centers, sf_values, n_pairs) — NaN where no pairs exist.
+    Compute binned structure function SF(Δt) = sqrt(<|Δm|^2 - noise>) for all pairs.
+    Subtracts photometric noise floor: SF²_intrinsic = <(mi-mj)²> - <σi²+σj²>.
+    Returns (sf_values, n_pairs) — NaN where no pairs exist.
     """
     n = len(mjd)
     if n < 5:
         return np.full(len(bins)-1, np.nan), np.zeros(len(bins)-1, int)
 
     # All pairs
-    i, j = np.triu_indices(n, k=1)
-    dt  = np.abs(mjd[i] - mjd[j])
-    dm2 = (mag[i] - mag[j]) ** 2
+    ii, jj = np.triu_indices(n, k=1)
+    dt  = np.abs(mjd[ii] - mjd[jj])
+    dm2 = (mag[ii] - mag[jj]) ** 2
+    noise2 = (err[ii] ** 2 + err[jj] ** 2) if err is not None else None
 
     centers  = np.sqrt(bins[:-1] * bins[1:])
     sf_vals  = np.full(len(centers), np.nan)
@@ -105,7 +106,10 @@ def compute_sf(mjd, mag, bins=LAG_BINS):
     for k in range(len(centers)):
         mask = (dt >= bins[k]) & (dt < bins[k+1])
         if mask.sum() > 0:
-            sf_vals[k] = np.sqrt(dm2[mask].mean())
+            dm2_mean = dm2[mask].mean()
+            if noise2 is not None:
+                dm2_mean = max(dm2_mean - noise2[mask].mean(), 0.0)
+            sf_vals[k] = np.sqrt(dm2_mean)
             n_pairs[k] = mask.sum()
 
     return sf_vals, n_pairs
@@ -115,9 +119,11 @@ def compute_sf(mjd, mag, bins=LAG_BINS):
 def load_lc(dbid, band="r"):
     fpath = LC_DIR / str(int(dbid))
     lc = pd.read_csv(fpath, sep=r"\s+", names=LC_COLS, comment="#")
-    mjd_col, mag_col = f"{band}_mjd", f"{band}_mag"
+    mjd_col, mag_col, err_col = f"{band}_mjd", f"{band}_mag", f"{band}_err"
     good = lc[mag_col] > -99
-    return lc.loc[good, mjd_col].values, lc.loc[good, mag_col].values
+    return (lc.loc[good, mjd_col].values,
+            lc.loc[good, mag_col].values,
+            lc.loc[good, err_col].values)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -140,13 +146,13 @@ for k, fpath in enumerate(lc_files):
         print(f"  {k}/{len(lc_files)}")
     dbid = int(fpath.name)
     try:
-        mjd, mag = load_lc(dbid, "r")
+        mjd, mag, err = load_lc(dbid, "r")
     except Exception:
         continue
     if len(mjd) < 10:
         continue
 
-    sf_vals, n_pairs = compute_sf(mjd, mag)
+    sf_vals, n_pairs = compute_sf(mjd, mag, err)
     all_sf_grids.append(sf_vals)
 
     # DRW prediction for this object
@@ -231,8 +237,8 @@ for row_idx, ids in enumerate([normal_ids, excess_ids]):
     for col_idx, dbid in enumerate(ids):
         ax = axes[row_idx, col_idx]
         try:
-            mjd, mag = load_lc(int(dbid), "r")
-            sf_vals, _ = compute_sf(mjd, mag)
+            mjd, mag, err = load_lc(int(dbid), "r")
+            sf_vals, _ = compute_sf(mjd, mag, err)
             ax.loglog(bin_centers, sf_vals, "o-", ms=4, color="steelblue", label="Observed")
         except Exception:
             pass

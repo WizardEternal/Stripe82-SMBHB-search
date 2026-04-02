@@ -257,11 +257,14 @@ print("Deep follow-up on novel candidates...")
 
 # Also pull their DRW MC null from mc_df if available, else use ls_all
 n_novel = len(novel)
-fig, axes = plt.subplots(n_novel, 3, figsize=(18, 4.5 * n_novel))
-if n_novel == 1:
-    axes = axes[np.newaxis, :]
-fig.suptitle("Novel candidates: flagged by IsoForest + RF-noLS, NOT by LS\n"
-             "(LS periodogram shown for reference — below formal threshold)", fontsize=12)
+if n_novel == 0:
+    print("  No novel candidates found — skipping follow-up plots.")
+else:
+    fig, axes = plt.subplots(n_novel, 3, figsize=(18, 4.5 * n_novel))
+    if n_novel == 1:
+        axes = axes[np.newaxis, :]
+    fig.suptitle("Novel candidates: flagged by IsoForest + RF-noLS, NOT by LS\n"
+                 "(LS periodogram shown for reference — below formal threshold)", fontsize=12)
 
 for idx, (_, row) in enumerate(novel.iterrows()):
     dbid = int(row["dbID"])
@@ -331,10 +334,11 @@ for idx, (_, row) in enumerate(novel.iterrows()):
     ax.set_xlabel("Phase (0–2)"); ax.set_ylabel("r magnitude")
     ax.set_title(f"Phase-folded at P={best_period:.1f} d", fontsize=9)
 
-plt.tight_layout()
-plt.savefig(PLOTS_DIR / "19_novel_candidates_followup.png", dpi=150)
-plt.close()
-print("  Saved plots/19_novel_candidates_followup.png")
+if n_novel > 0:
+    plt.tight_layout()
+    plt.savefig(PLOTS_DIR / "19_novel_candidates_followup.png", dpi=150)
+    plt.close()
+    print("  Saved plots/19_novel_candidates_followup.png")
 
 
 # ════════════════════════════════════════════════════════════════════════════

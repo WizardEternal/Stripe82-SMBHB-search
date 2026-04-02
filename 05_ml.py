@@ -158,15 +158,15 @@ auc = roc_auc_score(y, proba_cv)
 print(f"  Average Precision (PR-AUC): {ap:.3f}")
 print(f"  ROC-AUC:                    {auc:.3f}")
 
-# Fit on full dataset for feature importances
+# Fit on full dataset for feature importances only
 rf.fit(X, y)
 importances = pd.Series(rf.feature_importances_, index=FEATURE_COLS).sort_values(ascending=False)
 print(f"\n  Top 5 features by importance:")
 print(importances.head(5).to_string())
 
-# Add RF score to feature table
+# Use cross-validated predictions for stored scores (avoids data leakage)
 feat_clean = feat_clean.copy()
-feat_clean["rf_score"] = rf.predict_proba(X)[:, 1]
+feat_clean["rf_score"] = proba_cv
 feat_clean["is_candidate"] = y
 feat_clean.to_csv(DATA_DIR / "feature_matrix.csv", index=False)
 
@@ -337,9 +337,16 @@ ap_nols  = average_precision_score(y, proba_nols)
 auc_nols = roc_auc_score(y, proba_nols)
 print(f"  AP (PR-AUC): {ap_nols:.3f}  (was {ap:.3f} with LS features)")
 print(f"  ROC-AUC:     {auc_nols:.3f}  (was {auc:.3f} with LS features)")
+# Interpretation caveat: AUC 0.81 means these features predict *which objects
+# have high LS peak power*, not which objects are genuinely periodic. Features
+# like sf_excess and kurtosis correlate with variability amplitude, which in
+# turn raises LS power even for purely stochastic objects. The AUC is an upper
+# bound on the classifier's ability to detect true periodicity without period
+# searching; confirming it requires labels from an independent detection method.
 
 rf_nols.fit(X_nols, y)
-feat_clean["rf_nols_score"] = rf_nols.predict_proba(X_nols)[:, 1]
+# Use CV predictions (already computed above) to avoid leakage
+feat_clean["rf_nols_score"] = proba_nols
 imp_nols = pd.Series(rf_nols.feature_importances_, index=FEATURE_COLS_NOLS).sort_values(ascending=False)
 print(f"  Top 5 features (no LS):")
 print(imp_nols.head(5).to_string())
@@ -352,12 +359,17 @@ print("\n" + "="*60)
 print("Model 3: Isolation Forest (unsupervised)")
 print("="*60)
 
+# Scale no-LS features separately for the unsupervised model so it isn't
+# dominated by LS-derived features (which would just recapitulate the LS result).
+scaler_nols = StandardScaler()
+X_nols_scaled = scaler_nols.fit_transform(X_nols)
+
 iso = IsolationForest(n_estimators=500, contamination=0.01,
                       random_state=42, n_jobs=-1)
-iso.fit(X_scaled)
+iso.fit(X_nols_scaled)
 # score_samples returns negative anomaly score: more negative = more anomalous
 # flip sign so higher = more anomalous
-feat_clean["iso_score"] = -iso.score_samples(X_scaled)
+feat_clean["iso_score"] = -iso.score_samples(X_nols_scaled)
 
 # Evaluate against LS candidate labels
 auc_iso = roc_auc_score(y, feat_clean["iso_score"])

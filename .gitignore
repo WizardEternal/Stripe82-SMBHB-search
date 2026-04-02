@@ -1,5 +1,10 @@
 # Raw data — too large for git, re-downloadable via 01_download_data.py
-data/
+data/lightcurves/
+data/drw/
+data/DB_QSO_S82.dat
+data/DB_QSO_S82.dat.gz
+data/QSO_S82.tar.gz
+data/s82drw.tar.gz
 
 # Personal project notes
 stripe82_project_context.md
