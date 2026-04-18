@@ -4,6 +4,30 @@ A pipeline for searching for supermassive black hole binary (SMBHB) candidates i
 
 ---
 
+## Portfolio context
+
+This repo is one piece of a three-part project: simulated progenitor populations, predicted GW and EM signals from those progenitors, and a search for those signals in real survey data.
+
+| Repo | Question it answers | Role |
+|------|---------------------|------|
+| [tng-smbhb-population](https://github.com/WizardEternal/tng-smbhb-population) | What does the progenitor population look like? | IllustrisTNG BH merger catalog, GW band classification, EM recovery funnel |
+| [smbhb-inspiral](https://github.com/WizardEternal/smbhb-inspiral) | What do their GW and EM signatures look like? | Post-Newtonian inspiral simulator, detector sensitivity curves, EM detectability lookup |
+| **Stripe82-SMBHB-search** (this repo) | Can we actually find them in real data? | DRW-based periodicity search and ML classification in SDSS Stripe 82 |
+
+tng-smbhb-population tells you what the progenitor population looks like. smbhb-inspiral tells you what their GW and EM signatures look like. This repo takes that and goes looking for them in real data.
+
+---
+
+## Theoretical context: the multi-messenger gap
+
+![Multi-messenger detectability funnel: IllustrisTNG merger population, GW band classification, EM survey recoverability. Canonical synthetic seed=42 figure; see tng-smbhb-population for real-data caveats.](plots/gap_plot_funnel.png)
+
+Starting from about 5,000 synthetic TNG-like merger events, the funnel drops by orders of magnitude at each selection step: quality cuts, LISA-band ISCO classification, period falling inside the Stripe 82 survey window (200-1100 days), and finally Lomb-Scargle recoverability. What is left at the bottom is a handful of sinusoidal candidates, and close to nothing if the signals are sawtooth-shaped.
+
+The last step is where this pipeline lives. Lin, Charisi & Haiman 2026 (ApJ 997, 316) found that Lomb-Scargle recovers only about 9% of sawtooth-shaped SMBHB signals under PTF-like cadence, compared to about 45% for sinusoidal signals. Hydrodynamical simulations of circumbinary disks suggest the sawtooth morphology is the more physically realistic one, so the standard LS period search probably misses most real SMBHBs. That is part of why the Isolation Forest branch here exists, as a first step toward something more shape-agnostic. See smbhb-inspiral for the per-system GW and EM framing, and tng-smbhb-population for the catalog-level funnel.
+
+---
+
 ## What is this actually doing?
 
 Quasars vary in brightness over time in a random-looking way that is well described by a stochastic process called a Damped Random Walk (DRW). If a quasar hosts two supermassive black holes orbiting each other (an SMBHB), you would expect to see some periodic signal on top of that random variability, caused by things like the orbital motion, Doppler boosting, or the dynamics of the gas around the binary.
@@ -86,4 +110,4 @@ Plots go to `plots/`. Intermediate results (CSVs) go to `data/`.
 - Charisi et al. 2016, MNRAS 463, 2145
 - Graham et al. 2015, MNRAS 453, 1562
 - Vaughan et al. 2016, MNRAS 461, 3145
-- Lin, Charisi & Haiman 2026, arXiv:2505.14778
+- Lin, Charisi & Haiman 2026, ApJ 997, 316
