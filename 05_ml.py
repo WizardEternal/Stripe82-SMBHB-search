@@ -8,9 +8,11 @@ Features extracted per object (r-band):
   From ls_pass1.csv: peak_power, best_period, n_cycles
 
 Labels:
-  Positive (1): objects significant at >99% DRW level (55 objects from candidates.csv)
+  Positive (1): objects significant at >99% DRW level (44 objects from candidates.csv
+    in the current pipeline run; actual count is read from the file at runtime, so
+    this docstring figure is informational only).
   Negative (0): everything else
-  Given the ~0.6% positive rate, we use class_weight='balanced' in RandomForest
+  Given the ~0.5% positive rate, we use class_weight='balanced' in RandomForest
   and evaluate with precision-recall rather than accuracy.
 
 Note: The LS-based labels used here inherit the limitation that LS preferentially

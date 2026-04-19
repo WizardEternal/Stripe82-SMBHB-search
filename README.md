@@ -106,6 +106,7 @@ Plots go to `plots/`. Intermediate results (CSVs) go to `data/`.
 
 ## References
 
+- MacLeod et al. 2010, ApJ 721, 1014  (DRW σ√(2τ) convention used for simulated null light curves)
 - MacLeod et al. 2012, ApJ 753, 106
 - Charisi et al. 2016, MNRAS 463, 2145
 - Graham et al. 2015, MNRAS 453, 1562
